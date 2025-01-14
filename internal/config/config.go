@@ -38,8 +38,8 @@ func Read() *Config {
 	return &c
 }
 
-func (cfg *Config) SetUser() {
-	cfg.CurrentUserName = "jose.nieto"
+func (cfg *Config) SetUser(username string) {
+	cfg.CurrentUserName = username
 
 	jsonData, err := json.Marshal(cfg)
 	if err != nil {
