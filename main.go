@@ -45,6 +45,7 @@ func main() {
 
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -112,4 +113,12 @@ func (c *Commands) run(s *stateInstance, cmd Command) error {
 	}
 
 	return handler(s, cmd)
+}
+
+func handlerReset(s *stateInstance, cmd Command) error {
+	err := s.db.DeleteAllUsers(context.Background())
+	if err != nil {
+		return err
+	}
+	return nil
 }
