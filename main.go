@@ -52,6 +52,7 @@ func main() {
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerRSS)
 	commands.register("addfeed", handlerAddFeed)
+	commands.register("feeds", handlerGetAllFeeds)
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -204,7 +205,7 @@ func handlerRSS(s *stateInstance, cmd Command) error {
 
 func handlerAddFeed(s *stateInstance, cmd Command) error {
 	feedName := cmd.Args[0]
-	feedURL := sql.NullString{String: cmd.Args[1], Valid: true}
+	feedURL := cmd.Args[1]
 
 	user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
 	if err != nil {
@@ -218,5 +219,36 @@ func handlerAddFeed(s *stateInstance, cmd Command) error {
 
 	fmt.Println(createdFeed)
 
+	return nil
+}
+
+func handlerGetAllFeeds(s *stateInstance, cmd Command) error {
+	var f []struct {
+		Name     string
+		Username string
+	}
+	feeds, err := s.db.GetAllFeeds(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, feed := range feeds {
+		fmt.Println(feed.Name)
+		fmt.Println(feed.Url)
+		fmt.Println(feed.UserID.String())
+		user, userErr := s.db.GetUserByID(context.Background(), feed.UserID)
+		if userErr != nil {
+			fmt.Println(userErr)
+			continue
+		}
+		f = append(f, struct {
+			Name     string
+			Username string
+		}{
+			Username: user.Name,
+			Name:     feed.Name,
+		})
+	}
+
+	fmt.Println(f)
 	return nil
 }
