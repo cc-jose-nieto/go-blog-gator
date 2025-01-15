@@ -32,7 +32,7 @@ type Commands struct {
 	list map[string]func(*stateInstance, Command) error
 }
 
-func middlewareLoggedIn(handler func(s *stateInstance, cmd Command) error) func(s *stateInstance, cmd Command) error {
+func middlewareLoggedIn(handler func(s *stateInstance, cmd Command) error) func(*stateInstance, Command) error {
 	return func(s *stateInstance, cmd Command) error {
 		user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
 		if err != nil {
@@ -49,6 +49,17 @@ func middlewareLoggedIn(handler func(s *stateInstance, cmd Command) error) func(
 	}
 }
 
+func middlewareCheckArgs(handler func(s *stateInstance, cmd Command) error) func(*stateInstance, Command) error {
+	return func(s *stateInstance, cmd Command) error {
+
+		if len(cmd.Args) == 0 {
+			return fmt.Errorf("no args provided")
+
+		}
+
+		return handler(s, cmd)
+	}
+}
 func main() {
 	c := *config.Read()
 
@@ -72,8 +83,9 @@ func main() {
 	commands.register("agg", handlerRSS)
 	commands.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	commands.register("feeds", handlerGetAllFeeds)
-	commands.register("follow", middlewareLoggedIn(handlerFollow))
+	commands.register("follow", middlewareCheckArgs(middlewareLoggedIn(handlerFollow)))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
+	commands.register("unfollow", middlewareCheckArgs(middlewareLoggedIn(handlerUnfollow)))
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -280,11 +292,6 @@ func handlerGetAllFeeds(s *stateInstance, cmd Command) error {
 }
 
 func handlerFollow(s *stateInstance, cmd Command) error {
-	fmt.Println("CreateFeedFollow")
-
-	if len(cmd.Args) == 0 {
-		return fmt.Errorf("no url provided")
-	}
 
 	url := cmd.Args[0]
 
@@ -314,6 +321,22 @@ func handlerFollowing(s *stateInstance, cmd Command) error {
 
 	for _, feed := range feeds {
 		fmt.Printf("%s\n", feed.FeedName)
+	}
+
+	return nil
+}
+
+func handlerUnfollow(s *stateInstance, cmd Command) error {
+	url := cmd.Args[0]
+	ctx := context.Background()
+	feed, err := s.db.GetFeedByUrl(ctx, url)
+	if err != nil {
+		return err
+	}
+
+	err = s.db.DeleteFeedFollowsByUserIdAndFeedId(ctx, database.DeleteFeedFollowsByUserIdAndFeedIdParams{UserID: s.currentUser.ID, FeedID: feed.ID})
+	if err != nil {
+		return err
 	}
 
 	return nil
