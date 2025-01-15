@@ -51,6 +51,7 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerRSS)
+	commands.register("addfeed", handlerAddFeed)
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -198,5 +199,24 @@ func handlerRSS(s *stateInstance, cmd Command) error {
 		//fmt.Printf("%s\n", item.Description)
 		//fmt.Printf("%s\n", item.PubDate)
 	}
+	return nil
+}
+
+func handlerAddFeed(s *stateInstance, cmd Command) error {
+	feedName := cmd.Args[0]
+	feedURL := sql.NullString{String: cmd.Args[1], Valid: true}
+
+	user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return err
+	}
+
+	createdFeed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{Name: feedName, Url: feedURL, UserID: user.ID})
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(createdFeed)
+
 	return nil
 }
