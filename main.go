@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/cc-jose-nieto/go-blog-gator/internal/config"
 	"github.com/cc-jose-nieto/go-blog-gator/internal/database"
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"html"
 	"net/http"
@@ -17,8 +18,9 @@ import (
 var errNoCommandFound = errors.New("command not found")
 
 type stateInstance struct {
-	cfg *config.Config
-	db  *database.Queries
+	cfg         *config.Config
+	db          *database.Queries
+	currentUser *database.User
 }
 
 type Command struct {
@@ -28,6 +30,23 @@ type Command struct {
 
 type Commands struct {
 	list map[string]func(*stateInstance, Command) error
+}
+
+func middlewareLoggedIn(handler func(s *stateInstance, cmd Command) error) func(s *stateInstance, cmd Command) error {
+	return func(s *stateInstance, cmd Command) error {
+		user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+		if err != nil {
+			return err
+		}
+
+		if user.ID == uuid.Nil {
+			return errors.New("user not found")
+		}
+
+		s.currentUser = &user
+
+		return handler(s, cmd)
+	}
 }
 
 func main() {
@@ -51,10 +70,10 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerRSS)
-	commands.register("addfeed", handlerAddFeed)
+	commands.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	commands.register("feeds", handlerGetAllFeeds)
-	commands.register("follow", handlerFollow)
-	commands.register("following", handlerFollowing)
+	commands.register("follow", middlewareLoggedIn(handlerFollow))
+	commands.register("following", middlewareLoggedIn(handlerFollowing))
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -209,17 +228,17 @@ func handlerAddFeed(s *stateInstance, cmd Command) error {
 	feedName := cmd.Args[0]
 	feedURL := cmd.Args[1]
 
-	user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+	//user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+	//if err != nil {
+	//	return err
+	//}
+
+	createdFeed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{Name: feedName, Url: feedURL, UserID: s.currentUser.ID})
 	if err != nil {
 		return err
 	}
 
-	createdFeed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{Name: feedName, Url: feedURL, UserID: user.ID})
-	if err != nil {
-		return err
-	}
-
-	_, err = s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{UserID: user.ID, FeedID: createdFeed.ID})
+	_, err = s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{UserID: s.currentUser.ID, FeedID: createdFeed.ID})
 	if err != nil {
 		return err
 	}
@@ -274,12 +293,7 @@ func handlerFollow(s *stateInstance, cmd Command) error {
 		return err
 	}
 
-	user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return err
-	}
-
-	feedFollow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{UserID: user.ID, FeedID: feed.ID})
+	feedFollow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{UserID: s.currentUser.ID, FeedID: feed.ID})
 	if err != nil {
 		return err
 	}
@@ -293,12 +307,7 @@ func handlerFollow(s *stateInstance, cmd Command) error {
 func handlerFollowing(s *stateInstance, cmd Command) error {
 	fmt.Println("GetFeedFollowsByUserId")
 
-	user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return err
-	}
-
-	feeds, err := s.db.GetFeedFollowsByUserId(context.Background(), user.ID)
+	feeds, err := s.db.GetFeedFollowsByUserId(context.Background(), s.currentUser.ID)
 	if err != nil {
 		return err
 	}
