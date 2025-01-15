@@ -46,6 +46,7 @@ func main() {
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -119,6 +120,21 @@ func handlerReset(s *stateInstance, cmd Command) error {
 	err := s.db.DeleteAllUsers(context.Background())
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func handlerUsers(s *stateInstance, cmd Command) error {
+	users, err := s.db.GetAllUsers(context.Background())
+	if err != nil {
+		return err
+	}
+	var isCurrentUser string
+	for _, user := range users {
+		if s.cfg.CurrentUserName == user.Name {
+			isCurrentUser = "(current)"
+		}
+		fmt.Printf("* %s %s\n", user.Name, isCurrentUser)
 	}
 	return nil
 }
