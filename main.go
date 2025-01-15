@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/cc-jose-nieto/go-blog-gator/internal/config"
 	"github.com/cc-jose-nieto/go-blog-gator/internal/database"
 	_ "github.com/lib/pq"
+	"html"
+	"net/http"
 	"os"
 )
 
@@ -47,6 +50,7 @@ func main() {
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
+	commands.register("agg", handlerRSS)
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -135,6 +139,64 @@ func handlerUsers(s *stateInstance, cmd Command) error {
 			isCurrentUser = "(current)"
 		}
 		fmt.Printf("* %s %s\n", user.Name, isCurrentUser)
+	}
+	return nil
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+
+	client := http.DefaultClient
+
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-agent", "gator")
+
+	body, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Body.Close()
+
+	feed := &RSSFeed{}
+	err = xml.NewDecoder(body.Body).Decode(feed)
+	if err != nil {
+		return nil, err
+	}
+
+	feed.Channel.Title = html.UnescapeString(feed.Channel.Title)
+	feed.Channel.Description = html.UnescapeString(feed.Channel.Description)
+
+	return feed, nil
+}
+
+func handlerRSS(s *stateInstance, cmd Command) error {
+	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return err
+	}
+	for _, item := range feed.Channel.Item {
+		fmt.Printf("%s\n", item)
+		//fmt.Printf("%s\n", item.Link)
+		//fmt.Printf("%s\n", item.Description)
+		//fmt.Printf("%s\n", item.PubDate)
 	}
 	return nil
 }
