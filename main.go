@@ -233,7 +233,17 @@ func handlerRSS(s *stateInstance, cmd Command) error {
 	ticker := time.NewTicker(parsedDuration)
 	fmt.Printf("Collecting feeds every %s\n", duration)
 	for ; ; <-ticker.C {
-		scrapeFeeds(s)
+		feeds, err := s.db.GetAllFeedToFetch(context.Background())
+		if err != nil {
+			fmt.Errorf("Error: %v", err)
+			return nil
+		}
+
+		for _, feed := range feeds {
+			fmt.Println(feed.Url)
+			go scrapeFeeds(s, feed)
+		}
+
 	}
 
 	return nil
@@ -345,15 +355,8 @@ func handlerUnfollow(s *stateInstance, cmd Command) error {
 	return nil
 }
 
-func scrapeFeeds(s *stateInstance) {
+func scrapeFeeds(s *stateInstance, feed database.Feed) {
 	ctx := context.Background()
-	feed, err := s.db.GetNextFeedToFetch(ctx)
-	if err != nil {
-		fmt.Errorf("Error: %v", err)
-		return
-	}
-
-	fmt.Println(feed.Name)
 
 	fetchedFeed, err := fetchFeed(context.Background(), feed.Url)
 	if err != nil {
