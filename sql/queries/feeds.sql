@@ -14,4 +14,4 @@ SELECT * FROM feeds WHERE user_id = $1;
 UPDATE feeds SET last_fetched_at = now(), updated_at = now() WHERE id = $1;
 
 -- name: GetNextFeedToFetch :one
-SELECT * FROM feeds ORDER BY created_at DESC NULLS FIRST LIMIT 1;
+SELECT * FROM feeds ORDER BY last_fetched_at ASC NULLS FIRST LIMIT 1;

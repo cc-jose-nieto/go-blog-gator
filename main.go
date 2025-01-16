@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/araddon/dateparse"
 	"github.com/cc-jose-nieto/go-blog-gator/internal/config"
 	"github.com/cc-jose-nieto/go-blog-gator/internal/database"
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"html"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -87,6 +89,7 @@ func main() {
 	commands.register("follow", middlewareCheckArgs(middlewareLoggedIn(handlerFollow)))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
 	commands.register("unfollow", middlewareCheckArgs(middlewareLoggedIn(handlerUnfollow)))
+	commands.register("browse", handlerBrowse)
 
 	if len(os.Args) < 2 {
 		fmt.Println("no command provided")
@@ -350,22 +353,50 @@ func scrapeFeeds(s *stateInstance) {
 		return
 	}
 
-	fmt.Println(feed)
+	fmt.Println(feed.Name)
 
 	fetchedFeed, err := fetchFeed(context.Background(), feed.Url)
 	if err != nil {
-		fmt.Errorf("Error: %v", err)
+		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	for _, item := range fetchedFeed.Channel.Item {
-		fmt.Printf("%s\n", item.Title)
-		//fmt.Printf("%s\n", item.Link)
-		//fmt.Printf("%s\n", item.Description)
-		//fmt.Printf("%s\n", item.PubDate)
+
+	for _, post := range fetchedFeed.Channel.Item {
+
+		parsedTime, err := dateparse.ParseAny(post.PubDate)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+
+		_, _ = s.db.CreatePost(context.Background(), database.CreatePostParams{
+			Title:       post.Title,
+			Url:         post.Link,
+			Description: post.Description,
+			FeedID:      feed.ID,
+			PublishedAt: sql.NullTime{Time: parsedTime, Valid: true},
+		})
 	}
-	//err = s.db.UpdateFeedLastFetchedAt(ctx, feed.ID)
-	//if err != nil {
-	//	fmt.Errorf("Error: %v", err)
-	//	return
-	//}
+	err = s.db.UpdateFeedLastFetchedAt(ctx, feed.ID)
+	if err != nil {
+		fmt.Errorf("Error: %v", err)
+	}
+}
+
+func handlerBrowse(s *stateInstance, cmd Command) error {
+	if len(cmd.Args) == 0 {
+		cmd.Args = []string{"2"}
+	}
+	limit, _ := strconv.Atoi(cmd.Args[0])
+
+	posts, err := s.db.GetPostsForUser(context.Background(), int32(limit))
+	if err != nil {
+
+	}
+
+	for _, post := range posts {
+		fmt.Println(post)
+	}
+
+	return nil
 }
