@@ -13,6 +13,7 @@ import (
 	"html"
 	"net/http"
 	"os"
+	"time"
 )
 
 var errNoCommandFound = errors.New("command not found")
@@ -80,7 +81,7 @@ func main() {
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
-	commands.register("agg", handlerRSS)
+	commands.register("agg", middlewareCheckArgs(handlerRSS))
 	commands.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	commands.register("feeds", handlerGetAllFeeds)
 	commands.register("follow", middlewareCheckArgs(middlewareLoggedIn(handlerFollow)))
@@ -223,16 +224,15 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 }
 
 func handlerRSS(s *stateInstance, cmd Command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		return err
+	duration := cmd.Args[0]
+	parsedDuration, _ := time.ParseDuration(duration)
+
+	ticker := time.NewTicker(parsedDuration)
+	fmt.Printf("Collecting feeds every %s\n", duration)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
 	}
-	for _, item := range feed.Channel.Item {
-		fmt.Printf("%s\n", item)
-		//fmt.Printf("%s\n", item.Link)
-		//fmt.Printf("%s\n", item.Description)
-		//fmt.Printf("%s\n", item.PubDate)
-	}
+
 	return nil
 }
 
@@ -340,4 +340,32 @@ func handlerUnfollow(s *stateInstance, cmd Command) error {
 	}
 
 	return nil
+}
+
+func scrapeFeeds(s *stateInstance) {
+	ctx := context.Background()
+	feed, err := s.db.GetNextFeedToFetch(ctx)
+	if err != nil {
+		fmt.Errorf("Error: %v", err)
+		return
+	}
+
+	fmt.Println(feed)
+
+	fetchedFeed, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		fmt.Errorf("Error: %v", err)
+		return
+	}
+	for _, item := range fetchedFeed.Channel.Item {
+		fmt.Printf("%s\n", item.Title)
+		//fmt.Printf("%s\n", item.Link)
+		//fmt.Printf("%s\n", item.Description)
+		//fmt.Printf("%s\n", item.PubDate)
+	}
+	//err = s.db.UpdateFeedLastFetchedAt(ctx, feed.ID)
+	//if err != nil {
+	//	fmt.Errorf("Error: %v", err)
+	//	return
+	//}
 }
